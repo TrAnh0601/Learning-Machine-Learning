@@ -1,6 +1,8 @@
 __pycache__/
 .ipymb_checkpoints/
 .idea/
+.data/
+.submission/
 *.pyc
 *.csv
 *.pkl
