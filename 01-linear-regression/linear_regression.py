@@ -1,26 +1,45 @@
 import numpy as np
 
-# MODEL
+# UTILITY FUNCTIONS
 def add_bias(X):
+    """Add intercept term (column of ones) to feature matrix"""
     ones = np.ones((X.shape[0], 1))
     return np.concatenate((ones, X), axis=1)
 
 def mse(y, y_hat):
+    """Calculate Mean Squared Error"""
     y = np.array(y)
-    y_hat = np.array(y_hat)
     y = y.reshape(-1)
+    y_hat = np.array(y_hat)
     y_hat = y_hat.reshape(-1)
     return np.mean((y - y_hat) ** 2)
 
 
 class LinearRegression:
-    def __init__(self):
+    def __init__(self, regularization=None, lambda_=0.0):
         self.w = None
+        self.regularization = regularization
+        self.lambda_ = lambda_
 
     def fit_normal(self, X, y):
+        """Fit using Normal Equations (closed-form solution)"""
         Xb = add_bias(X)
         y = y.reshape(-1, 1)
-        self.w = np.linalg.pinv(Xb) @ y
+
+        if self.regularization == 'l2':
+            # Ridge: (X^T X + λI)^(-1) X^T y
+            n = Xb.shape[1]
+            reg_matrix = self.lambda_ * np.eye(n)
+            reg_matrix[0, 0] = 0
+            self.w = np.linalg.inv(Xb.T @ Xb + reg_matrix) @ Xb.T @ y
+
+        elif self.regularization == 'l1':
+            raise ValueError("Lasso (L1) has no closed-form solution")
+
+        else:
+            # Standard linear regression
+            self.w = np.linalg.pinv(Xb.T @ Xb) @ Xb.T @ y
+
         return self
 
     def fit_gd(self, X, y, learning_rate=0.01, n_iterations=1000,
@@ -36,10 +55,20 @@ class LinearRegression:
         for _ in range(n_iterations):
             y_hat = Xb @ self.w
             error = y_hat - y
+
             gradient = (Xb.T @ error) / m
 
+            if self.regularization == 'l2':
+                reg_grad = (self.lambda_ / m) * self.w
+                reg_grad[0] = 0
+                gradient += reg_grad
+            elif self.regularization == 'l1':
+                reg_grad = (self.lambda_ / m) * np.sign(self.w)
+                reg_grad[0] = 0
+                gradient += reg_grad
+
             self.w -= learning_rate * gradient
-            loss = mse(y, y_hat)
+            loss = self._compute_cost(Xb, y)
 
             if early_stopping:
                 if loss < best_loss:
@@ -53,42 +82,55 @@ class LinearRegression:
 
         return self
 
+    def _compute_cost(self, Xb, y):
+        """Compute cost function J(w) including regularization."""
+        m = Xb.shape[0]
+        y_hat = Xb @ self.w
+
+        # MSE cost
+        cost = (1 / (2 * m)) * np.sum((y_hat - y) ** 2)
+
+        if self.regularization == 'l2':
+            cost += (self.lambda_ / (2 * m)) * np.sum(self.w[1:] ** 2)
+        elif self.regularization == 'l1':
+            cost += (self.lambda_ / m) * np.sum(np.abs(self.w[1:]))
+
+        return cost
+
     def predict(self, X):
+        if self.w is None:
+            raise ValueError("Model not fitted yet")
         Xb = add_bias(X)
-        return Xb @ self.w
+        return (Xb @ self.w).reshape(-1)
 
 
-# TEST
-np.random.seed(0)
+class Ridge(LinearRegression):
+    def __init__(self, alpha=1.0):
+        super().__init__(regularization='l2', lambda_=alpha)
 
-# Generate data
-X = np.linspace(0, 10, 50).reshape(-1, 1)
-y = 2 + 3 * X + np.random.randn(50, 1) * 0.5  # small noise
 
-# Test normal
-model_normal = LinearRegression()
-model_normal.fit_normal(X, y)
+class Lasso(LinearRegression):
+    def __init__(self, alpha=1.0):
+        super().__init__(regularization='l1', lambda_=alpha)
 
-print("Normal equation weights:")
-print(model_normal.w)
 
-# Test gradient descent
-model_gd = LinearRegression()
-model_gd.fit_gd(
-    X, y,
-    learning_rate=0.01,
-    n_iterations=5000,
-    early_stopping=True,
-    patience=200
-)
+if __name__ == "__main__":
+    # Test on synthetic data
+    np.random.seed(42)
+    X = np.random.randn(10, 1)
+    y = 3 + 2 * X.ravel() + 0.5 * np.random.randn(10)
 
-print("Gradient descent weights:")
-print(model_gd.w)
+    # Standard Linear Regression
+    lr = LinearRegression()
+    lr.fit_normal(X, y)
+    print(f"LR Weight: {lr.w[1:]}, {lr.w[0, 0]}")
 
-# Test prediction
-X_test = np.array([[0], [5], [10]])
-y_pred = model_gd.predict(X_test)
+    # Ridge Regression
+    ridge = Ridge(alpha=0.1)
+    ridge.fit_gd(X, y, learning_rate=0.1, n_iterations=1000)
+    print(f"Ridge Weight: {ridge.w[1:]}, {ridge.w[0, 0]}")
 
-print("Predictions:")
-for x, yp in zip(X_test.flatten(), y_pred.flatten()):
-    print(f"x={x:.1f}, ŷ={yp:.2f}")
+    # Lasso Regression
+    lasso = Lasso(alpha=0.1)
+    lasso.fit_gd(X, y, learning_rate=0.1, n_iterations=1000)
+    print(f"Lasso Weight: {lasso.w[1:]}, {lasso.w[0, 0]}")
