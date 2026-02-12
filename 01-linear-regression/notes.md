@@ -4,7 +4,6 @@
 
 **Instructor:** Andrew Ng
 
----
 
 ## **1. Introduction**
 
@@ -23,7 +22,6 @@ This chapter provides a rigorous foundation for **Linear Regression**, a supervi
 - $\theta \in \mathbb{R}^{n+1}$: Parameter vector (weights).
     
 
----
 
 ## **2. Linear Regression Model**
 
@@ -33,7 +31,6 @@ We approximate the relationship between $x$ and $y$ linearly:
 
 $$h_\theta(x) = \sum_{j=0}^n \theta_j x_j = \theta^T x$$
 
----
 
 ## **3. Cost Function & Probabilistic Interpretation**
 
@@ -71,7 +68,6 @@ Maximizing the Log-Likelihood $\ell(\theta)$ is equivalent to minimizing the ter
     - _Answer:_ If noise follows a Laplace distribution, Maximum Likelihood Estimation leads to **L1 loss** (Mean Absolute Error), which is more robust to outliers (Robust Regression).
         
 
----
 
 ## **4. Convexity Analysis**
 
@@ -96,7 +92,6 @@ $$\nabla^2 J(\theta) = \frac{1}{m} X^T X$$
 - **Research Note:** If $X^T X$ is Positive Definite (PD) (i.e., invertible, full rank), the solution is unique. If it is only PSD (singular), there are infinite solutions along the "flat" directions (null space), but they all achieve the same minimal loss.
     
 
----
 
 ## **5. Gradient Descent (Numerical Method)**
 
@@ -117,7 +112,6 @@ The convergence speed of Gradient Descent depends heavily on the **Condition Num
 - **Research Note:** Second-order methods like Newton's Method approximate the inverse Hessian, making them invariant to affine scaling, but they are computationally expensive ($O(n^3)$).
     
 
----
 
 ## **6. The Normal Equations (Closed-Form Solution)**
 
@@ -151,7 +145,6 @@ If $X^T X$ is non-invertible (singular), standard Linear Regression fails. This 
 - **Bayesian View:** Ridge Regression corresponds to MAP estimation with a **Gaussian Prior** on $\theta$. L1 Regularization (Lasso) corresponds to a **Laplace Prior**, inducing sparsity.
     
 
----
 
 ## **7. Comparison: Gradient Descent vs. Normal Equations**
 
@@ -172,7 +165,6 @@ If $X^T X$ is non-invertible (singular), standard Linear Regression fails. This 
 - Iterative methods act as implicit regularization (early stopping).
     
 
----
 
 ## **8. Meta-Insights & Conclusion**
 
