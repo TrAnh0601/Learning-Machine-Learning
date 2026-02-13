@@ -23,25 +23,23 @@ class Poisson:
 
 
 class GLM:
-    def __init__(self, distribution, learning_rate=0.01, n_iters=1000):
+    def __init__(self, distribution):
         self.dist = distribution
-        self.lr = learning_rate
-        self.n_iters = n_iters
         self.w = None
 
-    def fit(self, X, y):
+    def fit(self, X, y, learning_rate=0.01, n_iters=1000):
         Xb = add_bias(X)
         m, n = Xb.shape
         y = y.reshape(-1, 1) if y.ndim == 1 else y
 
         self.w = np.zeros((n, 1), dtype=float)
 
-        for _ in range(self.n_iters):
+        for _ in range(n_iters):
             eta = Xb @ self.w
             y_hat = self.dist.link_inv(eta)
 
-            gradient = Xb.T @ (y - y_hat)
-            self.w += self.lr * gradient
+            gradient = (Xb.T @ (y - y_hat)) / m
+            self.w += learning_rate * gradient
 
     def predict(self, X):
         Xb = add_bias(X)
