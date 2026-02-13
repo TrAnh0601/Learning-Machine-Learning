@@ -22,8 +22,12 @@ class LogisticRegression:
         m, n = Xb.shape
 
         self.w = np.zeros((n, 1), dtype=float)
-        temperature = 1.0
 
+        # 'temperature' (T) controls the "sharpness" of the Sigmoid activation
+        # Standard Logistic Regression uses T = 1.0
+        # By setting T -> 0, the Sigmoid approximates the Heaviside Step Function,
+        # effectively transforming the model into a Perceptron with hard decision boundaries
+        temperature = 1.0
         if self.mode == 'perceptron':
             temperature = 0.0001
 
@@ -58,7 +62,7 @@ if __name__ == "__main__":
     print(f"Logistic Regression Accuracy: {acc:.2%}")
     print(f"Weights: {lr.w[1:].ravel()}, Bias: {lr.w[0, 0]:.4f}")
 
-    # Perceptron Mode (fix the bug first!)
+    # Perceptron Mode
     perceptron = LogisticRegression(mode='perceptron')
     perceptron.fit(X, y, learning_rate=0.1, n_iters=1000)
     acc_p = (perceptron.predict(X) == y).mean()
