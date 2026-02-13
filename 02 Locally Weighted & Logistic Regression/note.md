@@ -1,10 +1,5 @@
 # **Chapter: Locally Weighted Regression & Logistic Regression**
 
-**Course:** CS229 Machine Learning (Stanford University)
-
-**Instructor:** Andrew Ng
-
-
 
 ## **1. Locally Weighted Regression (LWR)**
 

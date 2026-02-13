@@ -1,9 +1,5 @@
 # **Chapter: Linear Regression and Gradient Descent**
 
-**Course:** CS229 Machine Learning (Stanford University)
-
-**Instructor:** Andrew Ng
-
 
 ## **1. Introduction**
 
