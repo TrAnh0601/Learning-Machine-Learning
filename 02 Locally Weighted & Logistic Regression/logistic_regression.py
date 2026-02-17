@@ -13,12 +13,19 @@ def sigmoid(z):
 
 
 class LogisticRegression:
-    def __init__(self, mode=None):
+    def __init__(self, mode=None, C=1.0, tol=1e-4, fit_intercept=True):
         self.w = None
         self.mode = mode
+        self.C = C
+        self.tol = tol
+        self.fit_intercept = fit_intercept
+
+        self.coef_ = None
+        self.intercept_ = None
+        self.n_iter_ = 0
 
     def fit(self, X, y, learning_rate=0.01, n_iters=1000):
-        Xb = add_bias(X)
+        Xb = add_bias(X) if self.fit_intercept else X
         m, n = Xb.shape
 
         self.w = np.zeros((n, 1), dtype=float)
@@ -31,28 +38,56 @@ class LogisticRegression:
         if self.mode == 'perceptron':
             temperature = 0.0001
 
-        for _ in range(n_iters):
+        # L2 regularization (lambda = 1 / C)
+        reg_mask = np.ones_like(self.w)
+        if self.fit_intercept:
+            reg_mask[0] = 0.0
+
+        for i in range(n_iters):
             z = (Xb @ self.w) / temperature
             y_hat = sigmoid(z)
-            gradient = (Xb.T @ (y - y_hat)) / m
+
+            # Gradient of log-loss + L2 penalty
+            gradient = (Xb.T @ (y - y_hat)) / m - (1 / self.C) * reg_mask * self.w
+
+            # Convergence check
+            if np.linalg.norm(gradient) < self.tol:
+                break
 
             self.w += learning_rate * gradient
+
+        if self.fit_intercept:
+            self.coef_ = self.w[1:].ravel()
+            self.intercept_ = self.w[0, 0]
+        else:
+            self.coef_ = self.w.ravel()
+            self.intercept_ = 0.0
 
         return self
 
     def predict_proba(self, X):
-        Xb = add_bias(X)
+        Xb = add_bias(X) if self.fit_intercept else X
         return sigmoid(Xb @ self.w)
 
     def predict(self, X, threshold=0.5):
-        Xb = add_bias(X)
         return (self.predict_proba(X) >= threshold).astype(int)
+
+    def score(self, X, y):
+        return (self.predict(X) == y).mean()
+
+    def get_params(self):
+        return {'mode': self.mode, 'C': self.C, 'tol': self.tol, 'fit_intercept': self.fit_intercept}
+
+    def set_pagrams(selfself, **pagrams):
+        for k, v in pagrams.items():
+            setattr(self, k, v)
+        return self
 
 
 if __name__ == "__main__":
     # Test on synthetic binary classification data
     np.random.seed(42)
-    X = np.random.randn(100, 2)
+    X = np.random.randn(1000, 2)
     y = (X[:, 0] + X[:, 1] > 0).astype(int).reshape(-1, 1)
 
     # Standard Logistic Regression
@@ -60,17 +95,11 @@ if __name__ == "__main__":
     lr.fit(X, y, learning_rate=0.1, n_iters=1000)
     acc = (lr.predict(X) == y).mean()
     print(f"Logistic Regression Accuracy: {acc:.2%}")
-    print(f"Weights: {lr.w[1:].ravel()}, Bias: {lr.w[0, 0]:.4f}")
+    print(f"Weights: {lr.coef_}, Bias: {lr.intercept_:.4f}")
 
     # Perceptron Mode
     perceptron = LogisticRegression(mode='perceptron')
     perceptron.fit(X, y, learning_rate=0.1, n_iters=1000)
     acc_p = (perceptron.predict(X) == y).mean()
     print(f"\nPerceptron Mode Accuracy: {acc_p:.2%}")
-    print(f"Weights: {perceptron.w[1:].ravel()}, Bias: {perceptron.w[0, 0]:.4f}")
-
-    # Show some predictions
-    print(f"\nSample predictions:")
-    print(f"True labels: {y[:10].ravel()}")
-    print(f"Predicted:   {lr.predict(X[:10]).ravel()}")
-    print(f"Probabilities: {lr.predict_proba(X[:10]).ravel()}")
+    print(f"Weights: {perceptron.coef_}, Bias: {perceptron.intercept_:.4f}")
