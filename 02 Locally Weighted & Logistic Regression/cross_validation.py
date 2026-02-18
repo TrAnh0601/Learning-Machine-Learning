@@ -1,7 +1,3 @@
-"""
-Test in Logistic Regression lecture
-"""
-
 import numpy as np
 from itertools import product
 

@@ -14,17 +14,18 @@ def sigmoid(z):
 
 class LogisticRegression:
     def __init__(self, mode=None, C=1.0, tol=1e-4, fit_intercept=True):
-        self.w = None
         self.mode = mode
         self.C = C
         self.tol = tol
         self.fit_intercept = fit_intercept
 
+        self.w = None
         self.coef_ = None
         self.intercept_ = None
         self.n_iter_ = 0
 
     def fit(self, X, y, learning_rate=0.01, n_iters=1000):
+        y = np.asarray(y).reshape(-1, 1)
         Xb = add_bias(X) if self.fit_intercept else X
         m, n = Xb.shape
 
@@ -34,9 +35,7 @@ class LogisticRegression:
         # Standard Logistic Regression uses T = 1.0
         # By setting T -> 0, the Sigmoid approximates the Heaviside Step Function,
         # effectively transforming the model into a Perceptron with hard decision boundaries
-        temperature = 1.0
-        if self.mode == 'perceptron':
-            temperature = 0.0001
+        temperature = 0.0001 if self.mode == 'perceptron' else 1.0
 
         # L2 regularization (lambda = 1 / C)
         reg_mask = np.ones_like(self.w)
@@ -52,9 +51,13 @@ class LogisticRegression:
 
             # Convergence check
             if np.linalg.norm(gradient) < self.tol:
+                self.n_iter_ = i
                 break
 
             self.w += learning_rate * gradient
+
+        else:
+            self.n_iter_ = n_iters
 
         if self.fit_intercept:
             self.coef_ = self.w[1:].ravel()
@@ -70,18 +73,10 @@ class LogisticRegression:
         return sigmoid(Xb @ self.w)
 
     def predict(self, X, threshold=0.5):
-        return (self.predict_proba(X) >= threshold).astype(int)
+        return (self.predict_proba(X) >= threshold).astype(int).ravel()
 
     def score(self, X, y):
         return (self.predict(X) == y).mean()
-
-    def get_params(self):
-        return {'mode': self.mode, 'C': self.C, 'tol': self.tol, 'fit_intercept': self.fit_intercept}
-
-    def set_pagrams(selfself, **pagrams):
-        for k, v in pagrams.items():
-            setattr(self, k, v)
-        return self
 
 
 if __name__ == "__main__":
