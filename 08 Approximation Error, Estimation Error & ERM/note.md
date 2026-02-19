@@ -89,3 +89,84 @@ The answer is conditional on **uniform convergence** — the property that _ε̂
 |**Spurious correlations**|ERM exploits shortcuts present in training distribution|Invariant Risk Minimization (IRM), group DRO, causal representation learning|
 
 **Spurious correlations** deserve special attention in research. ERM will always exploit any correlation that reduces training error, regardless of whether it's causal. A model trained on biased data achieves low _ε̂_ but high _ε_ on the true distribution — and the decomposition above makes this visible: approximation error appears low (the model fits training well), but estimation error explodes at test time due to distribution mismatch.
+
+## 5. Foundations of Uniform Convergence
+
+### 5.1. The Union Bound
+
+For _k_ events _A₁, …, Aₖ_ (not necessarily independent):
+
+$$P(A_1 \cup \cdots \cup A_k) \leq \sum_{i=1}^{k} P(A_i)$$
+
+The union bound is a pessimistic, assumption-free tool — it makes no claim about dependence structure between events. This generality is exactly what makes it useful for worst-case analysis over all _h ∈ H_ simultaneously.
+
+### 5.2. Hoeffding's Inequality
+
+For the sample mean _φ̂_ of _m_ IID Bernoulli(_φ_) variables:
+
+$$P(|\hat{\phi} - \phi| > \gamma) \leq 2e^{-2\gamma^2 m}$$
+
+Hoeffding belongs to the broader family of **concentration inequalities**. Key relatives:
+
+|Inequality|Applies To|Relative Tightness|
+|---|---|---|
+|**Hoeffding**|Bounded random variables|Baseline; assumes worst-case variance|
+|**Bernstein**|Bounded variables with known variance|Tighter when empirical variance is small|
+|**McDiarmid**|Functions satisfying bounded differences|Generalizes Hoeffding to functions of samples|
+|**Chebyshev**|Any distribution with finite variance|Much looser; polynomial decay vs. exponential|
+
+**Why these bounds are loose in practice:** Hoeffding assumes worst-case variance. Real empirical risks often have much lower variance, making Bernstein-type bounds substantially tighter. PAC-Bayes bounds, which incorporate a prior over hypotheses, can be tighter still and are increasingly used as non-vacuous bounds for neural networks.
+
+## 6. Generalization Bounds for Finite Classes
+
+For _|H| = k_, with probability at least _1 − δ_:
+
+$$\varepsilon(\hat{h}) \leq \varepsilon(h^*) + 2\gamma \qquad \text{where } \gamma = \sqrt{\frac{1}{2m}\log\frac{2k}{\delta}}$$
+
+**Proof Outline:**
+
+1. For any fixed _h_, Hoeffding gives: $P(|\hat{\varepsilon}(h) - \varepsilon(h)| > \gamma) \leq 2e^{-2\gamma^2 m}$
+2. Union bound over all _k_ hypotheses: $P(\exists h \in H: |\hat{\varepsilon}(h) - \varepsilon(h)| > \gamma) \leq 2ke^{-2\gamma^2 m}$
+3. Set RHS = _δ_, solve for _γ_: establishes **uniform convergence** with probability _1 − δ_.
+4. Under uniform convergence, since _ĥ_ minimizes _ε̂_: $\varepsilon(\hat{h}) \leq \hat{\varepsilon}(\hat{h}) + \gamma \leq \hat{\varepsilon}(h^*) + \gamma \leq \varepsilon(h^*) + 2\gamma$
+
+Step (4) is the crux: ERM's guarantee flows entirely from uniform convergence. If uniform convergence fails (e.g., infinite _H_ without complexity control), ERM provides no generalization guarantee.
+
+### Sample Complexity
+
+Solving for _m_ at given _γ_, _δ_:
+
+$$m \geq \frac{1}{2\gamma^2} \log\left(\frac{2k}{\delta}\right)$$
+
+Required data grows _logarithmically_ in _k_ but _quadratically_ in _1/γ_. Halving the allowed error gap quadruples the data requirement. This has direct implications for benchmark evaluation design: going from ±2% to ±1% accuracy requires ~4× the held-out data for statistically reliable results — a frequently underappreciated cost in empirical research.
+
+This also explains the practical value of large-scale pretraining: an initialization from a pretrained model acts as a prior, reducing the sample complexity for downstream fine-tuning relative to random initialization.
+
+## 7. Extension to Infinite Classes: VC Dimension
+
+For infinite _H_, the union bound over _k_ hypotheses fails. The VC dimension replaces it as a measure of effective complexity.
+
+$$\varepsilon(\hat{h}) \leq \hat{\varepsilon}(\hat{h}) + O\left(\sqrt{\frac{d \log(m/d) + \log(1/\delta)}{m}}\right)$$
+
+where _d = VCdim(H)_.
+
+**VC Dimension Reference:**
+
+|Model Class|VC Dimension|
+|---|---|
+|Linear classifiers in ℝⁿ|_n + 1_|
+|Degree-_p_ polynomial classifiers in ℝ|_p + 1_|
+|Convex _k_-gons in ℝ²|_2k + 1_|
+|Neural networks (combinatorial bound)|_O(W log W)_, _W_ = # weights|
+|Neural networks (Bartlett et al., norm-based)|Controlled by spectral norms, not parameter count|
+
+**VC Dimension in the Deep Learning Regime:**
+
+Classical VC bounds are **vacuous** for modern neural networks — a 100M-parameter network has VC dim far exceeding typical dataset sizes, yet generalizes well. This motivated alternative complexity measures:
+
+- **Rademacher complexity:** Data-dependent measure; captures the ability of _H_ to fit random labels on the actual training set. Tighter than VC in practice.
+- **PAC-Bayes bounds:** Incorporate a prior _P_ and posterior _Q_ over hypotheses; can yield non-vacuous bounds for neural networks by exploiting low-norm solutions found by SGD.
+- **Implicit regularization of SGD:** Gradient descent with small step sizes finds minimum-norm or maximum-margin solutions in overparameterized settings, effectively restricting search to a low-complexity region of _H_ even when the full class has high VC dim.
+- **Margin-based bounds:** Generalization controlled by spectral norms of weight matrices and the margin distribution — empirically more predictive than parameter count alone.
+
+When evaluating a new architecture or training procedure, VC-based arguments establish _existence_ of generalization, not a precise prediction. Empirical generalization gaps, ablations, and held-out evaluations remain essential complements.
