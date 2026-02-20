@@ -47,7 +47,7 @@ class ClassifierTree:
             for threshold in thresholds:
                 (_, y_left), (_, y_right) = self.split(X, y, feature, threshold)
 
-                if len(y_left) == 0 or (y_right) == 0:
+                if len(y_left) == 0 or len(y_right) == 0:
                     continue
 
                 gain = self.information_gain(y, y_left, y_right)
