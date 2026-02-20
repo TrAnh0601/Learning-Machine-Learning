@@ -9,7 +9,7 @@ class Node:
         self.right = right
         self.value = value
 
-class DecisionTree:
+class ClassifierTree:
     def __init__(self, max_depth=None, min_split=2):
         self.max_depth = max_depth
         self.min_split = min_split
@@ -75,8 +75,10 @@ class DecisionTree:
             leaf_value = np.argmax(np.bincount(y.astype(int)))
             return Node(value=leaf_value)
 
-        left_child = self.build_tree(X[best_feature], y[best_feature], depth + 1)
-        right_child = self.build_tree(X[best_feature], y[best_feature], depth + 1)
+        (X_left, y_left), (X_right, y_right) = self.split(X, y, best_feature, best_threshold)
+
+        left_child = self.build_tree(X_left, y_left, depth + 1)
+        right_child = self.build_tree(X_right, y_right, depth + 1)
 
         return Node(best_feature, best_threshold, left_child, right_child)
 
@@ -95,3 +97,81 @@ class DecisionTree:
 
     def predict(self, X):
         return np.array(self.predict_sample(x, self.root) for x in X)
+
+
+class RegressorTree:
+    def __init__(self, max_depth=None, min_split=2):
+        self.max_depth = max_depth
+        self.min_split = min_split
+        self.root = None
+
+    def ssr(self, y):
+        mean = np.mean(y)
+        return np.sum((y - mean) ** 2).astype(float)
+
+    def split(self, X, y, feature, threshold):
+        left_mask = X[:, feature] <= threshold
+        right_mask = ~left_mask
+        return (X[left_mask], y[left_mask]), (X[right_mask], y[right_mask])
+
+    def best_split(self, X, y):
+        best_ssr = np.inf
+        best_feature = None
+        best_threshold = None
+
+        n_features = X.shape[1]
+
+        for feature in range(n_features):
+            thresholds = np.unique(X[:, feature])
+
+            for threshold in thresholds:
+                (_, y_left), (_, y_right) = self.split(X, y, feature, threshold)
+
+                if len(y_left) == 0 or len(y_right) == 0:
+                    continue
+
+                threshold_ssr = self.ssr(y_left) + self.ssr(y_right)
+
+                if threshold_ssr < best_ssr:
+                    best_ssr = threshold_ssr
+                    best_feature = feature
+                    best_threshold = threshold
+
+        return best_feature, best_threshold
+
+    def build_tree(self, X, y, depth=0):
+        n_samples, n_features = X.shape
+        n_classes = len(np.unique(y))
+
+        if (depth >= self.max_depth if self.max_depth else None) or \
+            n_classes == 1 or \
+            n_samples < self.min_split:
+            return Node(value=np.mean(y))
+
+        best_feature, best_threshold = self.best_split(X, y)
+
+        if best_feature is None:
+            return Node(value=np.mean(y))
+
+        (X_left, y_left), (X_right, y_right) = self.split(X, y, best_feature, best_threshold)
+
+        left_child = self.build_tree(X_left, y_left, depth + 1)
+        right_child = self.build_tree(X_right, y_right, depth + 1)
+
+        return Node(best_feature, best_threshold, left_child, right_child)
+
+    def fit(self, X, y):
+        self.root = self.build_tree(X, y)
+        return self
+
+    def predict_sample(self, X, node):
+        if node.value is not None:
+            return node.value
+
+        if X[node.feature] <= node.threshold:
+            return self.predict_sample(X, node.left)
+
+        return self.predict_sample(X, node.right)
+
+    def predict(self, X):
+        return np.array([self.predict_sample(x, self.root) for x in X])
