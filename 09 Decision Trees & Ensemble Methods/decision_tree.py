@@ -39,9 +39,9 @@ class ClassifierTree:
         best_feature = None
         best_threshold = None
 
-        N_features = X.shape[1]
+        n_features = X.shape[1]
 
-        for feature in range(N_features):
+        for feature in range(n_features):
             thresholds = np.unique(X[:, feature])
 
             for threshold in thresholds:
@@ -96,7 +96,7 @@ class ClassifierTree:
         return self.predict_sample(X, node.right)
 
     def predict(self, X):
-        return np.array(self.predict_sample(x, self.root) for x in X)
+        return np.array([self.predict_sample(x, self.root) for x in X])
 
 
 class RegressorTree:
