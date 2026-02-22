@@ -128,7 +128,7 @@ $$\varepsilon(\hat{h}) \leq \varepsilon(h^*) + 2\gamma \qquad \text{where } \gam
 1. For any fixed _h_, Hoeffding gives: $P(|\hat{\varepsilon}(h) - \varepsilon(h)| > \gamma) \leq 2e^{-2\gamma^2 m}$
 2. Union bound over all _k_ hypotheses: $P(\exists h \in H: |\hat{\varepsilon}(h) - \varepsilon(h)| > \gamma) \leq 2ke^{-2\gamma^2 m}$
 3. Set RHS = _δ_, solve for _γ_: establishes **uniform convergence** with probability _1 − δ_.
-4. Under uniform convergence, since _ĥ_ minimizes _ε̂_: $\varepsilon(\hat{h}) \leq \hat{\varepsilon}(\hat{h}) + \gamma \leq \hat{\varepsilon}(h^*) + \gamma \leq \varepsilon(h^*) + 2\gamma$
+4. Under uniform convergence, since _ĥ_ minimizes _ε̂_: $$\varepsilon(\hat{h}) \leq \hat{\varepsilon}(\hat{h}) + \gamma \leq \hat{\varepsilon}(h^\*) + \gamma \leq \varepsilon(h^\*) + 2\gamma$$
 
 Step (4) is the crux: ERM's guarantee flows entirely from uniform convergence. If uniform convergence fails (e.g., infinite _H_ without complexity control), ERM provides no generalization guarantee.
 
