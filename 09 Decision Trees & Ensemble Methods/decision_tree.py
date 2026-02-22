@@ -1,4 +1,5 @@
 import numpy as np
+from abc import ABC, abstractmethod
 
 
 class Node:
@@ -9,48 +10,54 @@ class Node:
         self.right = right
         self.value = value
 
-class ClassifierTree:
+
+class BaseDecisionTree(ABC):
     def __init__(self, max_depth=None, min_split=2):
         self.max_depth = max_depth
         self.min_split = min_split
         self.root = None
 
-    def gini(self, y):
-        _, n_classes = np.unique(y, return_counts=True)
-        probs = n_classes / len(y)
-        return 1 - np.sum(probs ** 2)
+    @abstractmethod
+    def impurity(self, y):
+        pass
 
-    def split(self, X, y, feature, threshold):
+    @abstractmethod
+    def leaf_value(self, y):
+        pass
+
+    @abstractmethod
+    def stop(self, y):
+        pass
+
+    def split(self, X, feature, threshold):
         left_mask = X[:, feature] <= threshold
-        right_mask = ~left_mask
-        return (X[left_mask], y[left_mask]), (X[right_mask], y[right_mask])
+        return left_mask, ~left_mask
 
-    def information_gain(self, y, y_left, y_right):
+    def impurity_reduction(self, y, left_mask, right_mask):
         n = len(y)
-        n_left, n_right = len(y_left), len(y_right)
+        n_left, n_right = left_mask.sum(), right_mask.sum()
 
-        gini_parent = self.gini(y)
-        gini_children = (n_left / n) * self.gini(y_left) + (n_right / n) * self.gini(y_right)
-
-        return gini_parent - gini_children
+        return (
+            self.impurity(y)
+            - (n_left / n) * self.impurity(y[left_mask])
+            - (n_right / n) * self.impurity(y[right_mask])
+        )
 
     def best_split(self, X, y):
-        best_gain = -1
+        best_gain = -np.inf
         best_feature = None
         best_threshold = None
 
-        n_features = X.shape[1]
-
-        for feature in range(n_features):
+        for feature in range(X.shape[1]):
             thresholds = np.unique(X[:, feature])
 
             for threshold in thresholds:
-                (_, y_left), (_, y_right) = self.split(X, y, feature, threshold)
+                left_mask, right_mask = self.split(X, feature, threshold)
 
-                if len(y_left) == 0 or len(y_right) == 0:
+                if left_mask.sum() == 0 or right_mask.sum() == 0:
                     continue
 
-                gain = self.information_gain(y, y_left, y_right)
+                gain = self.impurity_reduction(y, left_mask, right_mask)
 
                 if gain > best_gain:
                     best_gain = gain
@@ -60,25 +67,25 @@ class ClassifierTree:
         return best_feature, best_threshold
 
     def build_tree(self, X, y, depth=0):
-        n_samples, n_features = X.shape
-        n_classes = len(np.unique(y))
+        n_samples = X.shape[0]
 
-        if (depth >= self.max_depth if self.max_depth else None) or \
-            n_classes == 1 or \
-            n_samples < self.min_split:
-            leaf_value = np.argmax(np.bincount(y.astype(int)))
-            return Node(value=leaf_value)
+        stop = (
+            (self.max_depth is not None and depth >= self.max_depth)
+            or self.stop(y)
+            or n_samples < self.min_split
+        )
+        if stop:
+            return Node(value=self.leaf_value(y))
 
         best_feature, best_threshold = self.best_split(X, y)
 
         if best_feature is None:
-            leaf_value = np.argmax(np.bincount(y.astype(int)))
-            return Node(value=leaf_value)
+            return Node(value=self.leaf_value(y))
 
-        (X_left, y_left), (X_right, y_right) = self.split(X, y, best_feature, best_threshold)
+        left_mask, right_mask = self.split(X, best_feature, best_threshold)
 
-        left_child = self.build_tree(X_left, y_left, depth + 1)
-        right_child = self.build_tree(X_right, y_right, depth + 1)
+        left_child = self.build_tree(X[left_mask], y[left_mask], depth + 1)
+        right_child = self.build_tree(X[right_mask], y[right_mask], depth + 1)
 
         return Node(best_feature, best_threshold, left_child, right_child)
 
@@ -86,92 +93,38 @@ class ClassifierTree:
         self.root = self.build_tree(X, y)
         return self
 
-    def predict_sample(self, X, node):
-        if node.value is not None:
-            return node.value
-
-        if X[node.feature] <= node.threshold:
-            return self.predict_sample(X, node.left)
-
-        return self.predict_sample(X, node.right)
-
-    def predict(self, X):
-        return np.array([self.predict_sample(x, self.root) for x in X])
-
-
-class RegressorTree:
-    def __init__(self, max_depth=None, min_split=2):
-        self.max_depth = max_depth
-        self.min_split = min_split
-        self.root = None
-
-    def ssr(self, y):
-        mean = np.mean(y)
-        return np.sum((y - mean) ** 2).astype(float)
-
-    def split(self, X, y, feature, threshold):
-        left_mask = X[:, feature] <= threshold
-        right_mask = ~left_mask
-        return (X[left_mask], y[left_mask]), (X[right_mask], y[right_mask])
-
-    def best_split(self, X, y):
-        best_ssr = np.inf
-        best_feature = None
-        best_threshold = None
-
-        n_features = X.shape[1]
-
-        for feature in range(n_features):
-            thresholds = np.unique(X[:, feature])
-
-            for threshold in thresholds:
-                (_, y_left), (_, y_right) = self.split(X, y, feature, threshold)
-
-                if len(y_left) == 0 or len(y_right) == 0:
-                    continue
-
-                threshold_ssr = self.ssr(y_left) + self.ssr(y_right)
-
-                if threshold_ssr < best_ssr:
-                    best_ssr = threshold_ssr
-                    best_feature = feature
-                    best_threshold = threshold
-
-        return best_feature, best_threshold
-
-    def build_tree(self, X, y, depth=0):
-        n_samples, n_features = X.shape
-        n_classes = len(np.unique(y))
-
-        if (depth >= self.max_depth if self.max_depth else None) or \
-            n_classes == 1 or \
-            n_samples < self.min_split:
-            return Node(value=np.mean(y))
-
-        best_feature, best_threshold = self.best_split(X, y)
-
-        if best_feature is None:
-            return Node(value=np.mean(y))
-
-        (X_left, y_left), (X_right, y_right) = self.split(X, y, best_feature, best_threshold)
-
-        left_child = self.build_tree(X_left, y_left, depth + 1)
-        right_child = self.build_tree(X_right, y_right, depth + 1)
-
-        return Node(best_feature, best_threshold, left_child, right_child)
-
-    def fit(self, X, y):
-        self.root = self.build_tree(X, y)
-        return self
-
-    def predict_sample(self, X, node):
-        if node.value is not None:
-            return node.value
-
-        if X[node.feature] <= node.threshold:
-            return self.predict_sample(X, node.left)
-
-        return self.predict_sample(X, node.right)
+    def predict_single(self, x):
+        node = self.root
+        while node.value is None:
+            if x[node.feature] <= node.threshold:
+                node = node.left
+            else:
+                node = node.right
+        return node.value
 
     def predict(self, X):
-        return np.array([self.predict_sample(x, self.root) for x in X])
+        return np.array([self.predict_single(x) for x in X])
+
+
+class ClassifierTree(BaseDecisionTree):
+    def impurity(self, y):
+        _, counts = np.unique(y, return_counts=True)
+        probs = counts / len(y)
+        return 1.0 - np.sum(probs ** 2)
+
+    def leaf_value(self, y):
+        return np.argmax(np.bincount(y.astype(int)))
+
+    def stop(self, y):
+        return len(np.unique(y)) == 1
+
+
+class RegressorTree(BaseDecisionTree):
+    def impurity(self, y):
+        return float(np.var(y))
+
+    def leaf_value(self, y):
+        return np.mean(y).astype(float)
+
+    def stop(self, y):
+        return np.var(y).astype(float) <= 1e-10
