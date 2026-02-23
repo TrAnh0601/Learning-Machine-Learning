@@ -40,13 +40,13 @@ class AdaBoost:
         D = np.full(n_samples, 1 / n_samples)
 
         for _ in range(self.n_estimators):
-            # Resample dataset according to D
-            indices = np.random.choice(n_samples, size=n_samples, replace=True, p=D)
-            X_resampled, y_resampled = X[indices], y[indices]
+            # Resampling
+            #indices = np.random.choice(n_samples, size=n_samples, replace=True, p=D)
+            #X_resampled, y_resampled = X[indices], y[indices]
 
             # Train stump
             stump = DecisionStump()
-            stump.fit(X_resampled, y_resampled, sample_weight=np.ones(n_samples) / n_samples)
+            stump.fit(X, y, sample_weight=D) # sample_weight=np.ones(n_samples) / n_samples if using resampling
 
             # Evaluate on weighted distribution
             preds = stump.predict(X)
