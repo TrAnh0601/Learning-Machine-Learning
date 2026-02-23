@@ -77,7 +77,11 @@ class BaseDecisionTree(ABC):
         if stop:
             return Node(value=self.leaf_value(y))
 
-        best_feature, best_threshold = self.best_split(X, y)
+        # Use feature_selector in Random Forrest
+        selector = getattr(self, "_feature_selector", None)
+        best_feature, best_threshold = (
+            selector(X, y) if selector is not None else self.best_split(X, y)
+        )
 
         if best_feature is None:
             return Node(value=self.leaf_value(y))

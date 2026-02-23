@@ -26,7 +26,7 @@ def random_best_split(tree, X, y, feature_indices):
             if left_mask.sum() == 0 or right_mask.sum() == 0:
                 continue
 
-            gain = tree.impurity(y, left_mask, right_mask)
+            gain = tree.impurity_reduction(y, left_mask, right_mask)
 
             if gain > best_gain:
                 best_gain = gain
@@ -44,13 +44,13 @@ class BaseRandomForest:
             self,
             n_estimators=100,
             max_depth=None,
-            min_samples_split=2,
+            min_split=2,
             max_features=None,
             random_state=None
     ):
         self.n_estimators = n_estimators
         self.max_depth = max_depth
-        self.min_samples_split = min_samples_split
+        self.min_split = min_split
         self.max_features = max_features
         self.random_state = random_state
 
@@ -58,6 +58,7 @@ class BaseRandomForest:
         self.feature_importance_ = []
         self.oob_score_ = None
         self._n_features = None
+        self.n_classes = None
 
     def resolve_max_features(self, n_features: int) -> int:
         if self.max_features is not None:
@@ -69,28 +70,29 @@ class BaseRandomForest:
         return n_features
 
     def make_tree(self):
-        return self._tree_cls(max_depth=self.max_depth, min_samples_split=self.min_samples_split)
+        return self._tree_cls(max_depth=self.max_depth, min_split=self.min_split)
 
     def grow_tree(self, X, y, k, rng):
         X_boot, y_boot, boot_idx = bootstrap(X, y, rng)
-
         tree = self.make_tree()
 
-        def patched_best_split(X_node, y_node):
+        def feature_selector(X_node, y_node):
             feature_indices = rng.choice(X.shape[1], size=k, replace=False)
             return random_best_split(tree, X_node, y_node, feature_indices)
 
-        tree.best_split = patched_best_split
+        tree._feature_selector = feature_selector
         tree.fit(X_boot, y_boot)
-        del tree.best_split
 
         return tree, boot_idx
 
     def fit(self, X, y):
         rng = np.random.default_rng(self.random_state)
         n, n_features = X.shape
+
         self._n_features = n_features
         k = self.resolve_max_features(n_features)
+
+        self._n_classes = len(np.unique(y))
 
         self.estimators_ = []
         boot_indices_list = []
@@ -178,12 +180,11 @@ class RandomForestClassifier(BaseRandomForest):
         """
         all_preds = self.collect_pred(X)
         n_samples = X.shape[0]
-        n_classes = int(all_preds.max()) + 1
-        proba = np.zeros((n_samples, n_classes))
+        proba = np.zeros((n_samples, self._n_classes))
 
         for i in range(n_samples):
             votes = all_preds[:, i].astype(int)
-            counts = np.bincount(votes, minlength=n_classes)
+            counts = np.bincount(votes, minlength=self._n_classes)
             proba[i] = counts / np.sum(counts)
 
         return proba
