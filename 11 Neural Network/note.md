@@ -176,7 +176,7 @@ Shapes:
 | Method | Batch size | Gradient estimate | Notes |
 |---|---|---|---|
 | **SGD** | 1 | High variance | Noisy updates; can escape local minima |
-| **Mini-batch GD** | $32$–$512$ | Moderate variance | Best hardware utilization; standard practice |
+| **Mini-batch GD** | 32–512 | Moderate variance | Best hardware utilization; standard practice |
 | **Full-batch GD** | $m$ | Exact | Expensive; converges smoothly but can overfit |
 
 Mini-batch introduces noise that acts as implicit regularization — a key insight for understanding generalization in deep learning.
@@ -208,8 +208,8 @@ $$\frac{\partial \mathcal{L}}{\partial W^{[l]}} = \delta^{[l]} a^{[l-1]T}$$
 $$\frac{\partial \mathcal{L}}{\partial b^{[l]}} = \delta^{[l]}$$
 
 **Vectorized over batch** ($m$ examples):
-$$\frac{\partial \mathcal{L}}{\partial W^{[l]}} = \frac{1}{m} \Delta^{[l]} A^{[l-1]T}$$
-$$\frac{\partial \mathcal{L}}{\partial b^{[l]}} = \frac{1}{m} \sum_{i=1}^{m} \delta^{[l](i)}$$
+$$\frac{\partial \mathcal{L}}{\partial W^{[l]}} = \frac{1}{m} \Delta^{[l]} A^{[l-1]T}$$;
+$$\frac{\partial \mathcal{L}}{\partial b^{[l]}} = \frac{1}{m} \sum_{i=1}^{m} \delta^{[l]\(i)}$$
 
 ### 8.3 Vanishing & Exploding Gradients
 
