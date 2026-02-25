@@ -1,5 +1,5 @@
 import numpy as np
-from neural_network import Activations, Losses, Dense, Activation, NeuralNetwork, NetworkBuilder
+from neural_network import Activations, Losses, Dense, Activation, NeuralNetwork, NetworkBuilder, SGD
 
 results = []
 
@@ -74,13 +74,13 @@ np.random.seed(0)
 X_xor = np.array([[0,0],[0,1],[1,0],[1,1]], dtype=float)
 y_xor = np.array([[0],[1],[1],[0]], dtype=float)
 
-nn = NeuralNetwork()
+nn = NeuralNetwork(optimizer=SGD(0.1))
 d1 = Dense(2, 8); d1.weights = he((2, 8))
 d2 = Dense(8, 1); d2.weights = he((8, 1))
 nn.add(d1); nn.add(Activation(Activations.relu, Activations.relu_derivative))
 nn.add(d2); nn.add(Activation(Activations.sigmoid, Activations.sigmoid_derivative))
 nn.set_loss(Losses.mse, Losses.mse_derivative)
-nn.train(X_xor, y_xor, epochs=5000, learning_rate=0.1)
+nn.train(X_xor, y_xor, epochs=5000)
 
 acc = np.mean((nn.predict(X_xor) > 0.5).astype(int) == y_xor)
 check("xor: 100% accuracy", acc == 1.0, f"acc={acc:.2f}")
@@ -100,7 +100,7 @@ nn_reg = NetworkBuilder.build({
 for l in nn_reg.layers:
     if isinstance(l, Dense): l.weights = he(l.weights.shape)
 
-nn_reg.train(X_reg, y_reg, epochs=3000, learning_rate=0.01)
+nn_reg.train(X_reg, y_reg, epochs=3000)
 mse = Losses.mse(y_reg, nn_reg.predict(X_reg))
 check("regression: MSE < 0.1", mse < 0.1, f"mse={mse:.4f}")
 
@@ -114,12 +114,13 @@ nn_mo = NetworkBuilder.build({
     'input_size': 3,
     'layers': [{'type': 'dense', 'units': 16, 'activation': 'relu'},
                {'type': 'dense', 'units': 2,  'activation': 'linear'}],
-    'loss': 'mse'
+    'loss': 'mse',
+    'optimizer': {'type': 'sgd', 'learning_rate': 0.1}
 })
 for l in nn_mo.layers:
     if isinstance(l, Dense): l.weights = he(l.weights.shape)
 
-nn_mo.train(X_mo, y_mo, epochs=3000, learning_rate=0.01)
+nn_mo.train(X_mo, y_mo, epochs=3000)
 preds_mo = nn_mo.predict(X_mo)
 check("multi-output: MSE < 0.1",    Losses.mse(y_mo, preds_mo) < 0.1, f"mse={Losses.mse(y_mo, preds_mo):.4f}")
 check("multi-output: output shape", preds_mo.shape == (80, 2))
@@ -137,18 +138,31 @@ nn_deep = NetworkBuilder.build({
                {'type': 'dense', 'units': 8,  'activation': 'relu'},
                {'type': 'dense', 'units': 4,  'activation': 'relu'},
                {'type': 'dense', 'units': 1,  'activation': 'sigmoid'}],
-    'loss': 'mse'
+    'loss': 'mse',
+    'optimizer': {'type': 'sgd', 'learning_rate': 0.1},
 })
 for l in nn_deep.layers:
     if isinstance(l, Dense): l.weights = he(l.weights.shape)
 
 loss_log = []
 for _ in range(2000):
-    out = nn_deep.predict(X_deep)
+    for l in nn_deep.layers:
+        l.training = True
+    out = X_deep
+    for l in nn_deep.layers:
+        out = l.forward(out)
     loss_log.append(Losses.mse(y_deep, out))
     g = Losses.mse_derivative(y_deep, out)
     for l in reversed(nn_deep.layers):
-        g = l.backward(g, 0.01)
+        g = l.backward(g)
+    for l in nn_deep.layers:
+        for pid, param, grad in l.get_params_and_grads():
+            if grad is None:
+                continue
+            state = nn_deep._opt_state.get(pid, {})
+            new_param, new_state = nn_deep.optimizer.update(param, grad, state)
+            param[:] = new_param
+            nn_deep._opt_state[pid] = new_state
 
 check("deep: loss decreases", loss_log[-1] < loss_log[0], f"{loss_log[0]:.4f} -> {loss_log[-1]:.4f}")
 acc_deep = np.mean((nn_deep.predict(X_deep) > 0.5).astype(int) == y_deep)
@@ -160,13 +174,14 @@ np.random.seed(4)
 X_mem = np.random.randn(10, 2)
 y_mem = np.random.randint(0, 2, (10, 1)).astype(float)
 
-nn_mem = NeuralNetwork()
+from neural_network import Adam
+nn_mem = NeuralNetwork(optimizer=Adam(learning_rate=0.01))
 d1 = Dense(2, 32); d1.weights = he((2, 32))
 d2 = Dense(32, 1); d2.weights = he((32, 1))
 nn_mem.add(d1); nn_mem.add(Activation(Activations.relu, Activations.relu_derivative))
 nn_mem.add(d2); nn_mem.add(Activation(Activations.sigmoid, Activations.sigmoid_derivative))
 nn_mem.set_loss(Losses.mse, Losses.mse_derivative)
-nn_mem.train(X_mem, y_mem, epochs=10000, learning_rate=0.1)
+nn_mem.train(X_mem, y_mem, epochs=10000)
 
 mem_loss = Losses.mse(y_mem, nn_mem.predict(X_mem))
 check("memorization: MSE < 0.01", mem_loss < 0.01, f"mse={mem_loss:.6f}")
