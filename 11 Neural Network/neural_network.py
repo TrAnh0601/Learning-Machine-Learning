@@ -1,378 +1,242 @@
+"""
+neural_network_torch.py — PyTorch rewrite of nn_from_scratch.py
+
+Key differences from the NumPy version:
+  - Autograd replaces manual backprop: no backward() methods, no _dW/_db.
+    PyTorch builds a computational graph during forward(); .backward() traverses
+    it automatically via reverse-mode autodiff.
+  - Optimizers are built-in (torch.optim). No need for manual state dicts.
+  - nn.Module replaces the custom Layer base class. Parameters registered via
+    nn.Parameter are automatically tracked by autograd and the optimizer.
+  - Data must be torch.Tensor. dtype=torch.float32 is the standard for neural nets
+    (float64 is slower on GPU and unnecessary for most tasks).
+"""
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import numpy as np
 
 
-class Activations:
-    @staticmethod
-    def relu(x):
-        return np.maximum(x, 0)
-
-    @staticmethod
-    def relu_derivative(x):
-        return x > 0
-
-    @staticmethod
-    def sigmoid(x):
-        pos = x >= 0
-        out = np.empty_like(x, dtype=float)
-        out[pos] = 1 / (1 + np.exp(-x[pos]))
-        out[~pos] = np.exp(x[~pos]) / (1 + np.exp(x[~pos]))
-        return out
-
-    @staticmethod
-    def sigmoid_derivative(x):
-        s = Activations.sigmoid(x)
-        return s * (1 - s)
-
-    @staticmethod
-    def softmax(x):
-        e = np.exp(x - np.max(x, axis=1, keepdims=True))
-        return e / np.sum(e, axis=1, keepdims=True)
-
-
 class Losses:
-    @staticmethod
-    def mse(y_true, y_pred):
-        return np.mean((y_true - y_pred) ** 2)
-
-    @staticmethod
-    def mse_derivative(y_true, y_pred):
-        return 2 * (y_pred - y_true) / y_true.shape[0]
-
-    @staticmethod
-    def bce(y_true, y_pred):
-        p = np.clip(y_pred, 1e-12, 1 - 1e-12)
-        return - np.mean(y_true * np.log(p) + (1 - y_true) * np.log(1 - p))
-
-    @staticmethod
-    def bce_derivative(y_true, y_pred):
-        p = np.clip(y_pred, 1e-12, 1 - 1e-12)
-        m = y_true.shape[0]
-        return (-(y_true / p) + (1 - y_true) / (1 - p)) / m
-
-    @staticmethod
-    def categorical_ce(y_true, y_pred):
-        p = np.clip(y_pred, 1e-12, 1.0)
-        return -np.mean(np.sum(y_true * np.log(p), axis=1))
-
-    @staticmethod
-    def categorical_ce_derivative(y_true, y_pred):
-        # fused Softmax + CE gradient: dL/dz = (y_hat - y_true) / m
-        # This is only correct when y_pred already went through softmax
-        # and this derivative is applied directly to the pre-softmax z.
-        return (y_pred - y_true) / y_true.shape[0]
+    mse = nn.MSELoss()
+    bce = nn.BCELoss()
+    bce_logits = nn.BCEWithLogitsLoss()
+    categorical_ce = nn.CrossEntropyLoss()
 
 
-class Optimizers:
-    def update(self, param, gradient, state):
-        """Return updated param and new state"""
-        raise NotImplementedError
-
-
-class SGD(Optimizers):
-    def __init__(self, learning_rate=0.01):
-        self.lr = learning_rate
-
-    def update(self, param, gradient, state):
-        return param - self.lr * gradient, state
-
-
-class Momentum(Optimizers):
-    def __init__(self, learning_rate=0.01, beta=0.9):
-        self.lr = learning_rate
-        self.beta = beta
-
-    def update(self, param, grad, state):
-        v = state.get('v', np.zeros_like(param))
-        v = self.beta * v + (1 - self.beta) * grad
-        return param - self.lr * v, {'v': v}
-
-
-class Adam(Optimizers):
-    def __init__(self, learning_rate=0.01, beta1=0.9, beta2=0.999, eps=1e-8):
-        self.lr = learning_rate
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.eps = eps
-
-    def update(self, param, gradient, state):
-        m = state.get('m', np.zeros_like(param))
-        v = state.get('v', np.zeros_like(param))
-        t = state.get('t', 0) + 1
-
-        m = self.beta1 * m + (1 - self.beta1) * gradient
-        v = self.beta2 * v + (1 - self.beta2) * (gradient ** 2)
-
-        # bias-corrected estimates
-        m_hat = m / (1 - self.beta1 ** t)
-        v_hat = v / (1 - self.beta2 ** t)
-
-        param_new = param - self.lr * m_hat / (np.sqrt(v_hat) + self.eps)
-        return param_new, {'m': m, 'v': v, 't': t}
-
-
-class Layer:
-    def __init__(self):
-        self.input = None
-        self.output = None
-        self.training = True
-
-    def forward(self, input):
-        raise NotImplementedError
-
-    def backward(self, output_gradient):
-        raise NotImplementedError
-
-    def get_params_and_grads(self):
-        """Yield (param_id, param, grad) for all learnable params in this layer."""
-        return []
-
-
-class Dense(Layer):
+class Dense(nn.Module):
     def __init__(self, input_size, output_size, l2=0.0):
         super().__init__()
-        self.weights = np.random.randn(input_size, output_size) * np.sqrt(2 / input_size)
-        self.bias = np.zeros((1, output_size))
-        self.l2 = l2 # L2 regularization coefficient
-        self._dw = None
-        self._db = None
+        # nn.Parameter registers tensor as a learnable parameter.
+        # autograd tracks all operations on it automatically.
+        self.weights = nn.Parameter(torch.empty(input_size, output_size))
+        self.bias = nn.Parameter(torch.zeros(1, output_size))
+        self.l2 = l2
 
-    def forward(self, input):
-        self.input = input
-        self.output = np.dot(input, self.weights) + self.bias
-        return self.output
+        # He init: std = sqrt(2 / fan_in)
+        nn.init.kaiming_normal_(self.weights, mode="fan_in", nonlinearity="relu")
 
-    def backward(self, output_gradient):
-        m = self.input.shape[0]
-
-        self._dw = np.dot(self.input.T, output_gradient) / m
-        self._db = np.sum(output_gradient, axis=0, keepdims=True) / m
+    def forward(self, x):
+        output = x @ self.weights + self.bias
 
         if self.l2 > 0:
-            self._dw += (self.l2 / m) * self.weights
-
-        return np.dot(output_gradient, self.weights.T)
-
-    def get_params_and_grads(self):
-        yield (id(self), 'w'), self.weights, self._dw
-        yield (id(self), 'b'), self.bias, self._db
+            # l2_loss is added to the main loss in NeuralNetwork.train()
+            self._l2_penalty = self.l2 * (self.weights ** 2).sum()
+        else:
+            self._l2_penalty = None
+        return output
 
 
-class Activation(Layer):
-    def __init__(self, activation, activation_derivative):
-        super().__init__()
-        self.activation = activation
-        self.activation_derivative = activation_derivative
-
-    def forward(self, input):
-        self.input = input
-        self.output = self.activation(input)
-        return self.output
-
-    def backward(self, output_gradient):
-        return output_gradient * self.activation_derivative(self.input)
-
-class SoftmaxCELayer(Layer):
-    """
-    Fused Softmax + Categorical Cross-Entropy output layer.
-
-    Why fuse? Computing dL/dz directly avoids the numerically unstable
-    intermediate dL/d(softmax) * d(softmax)/dz computation.
-    Result: dL/dz_i = y_hat_i - y_true_i  (see notes §3.1)
-
-    Usage: add as final layer; set loss=Losses.categorical_ce in NeuralNetwork.
-    The derivative passed into backward() is the fused gradient, not raw CE grad.
-    Use NeuralNetwork.set_loss(Losses.categorical_ce, Losses.categorical_ce_derivative).
-    """
-    def __init__(self):
-        super().__init__()
-        self._y_hat = None
-
-    def forward(self, x):
-        self.input = x
-        self._y_hat = Activations.softmax(x)
-        return self._y_hat
-
-    def backward(self, output_gradient):
-        # output_gradient here IS the fused dL/dz = (y_hat - y_true)/m
-        # passed in from Losses.categorical_ce_derivative
-        return output_gradient
-
-
-class Dropout(Layer):
-    """
-    Inverted dropout: scale kept activations by 1/p during training so that
-    expected value of output is unchanged → no adjustment needed at inference.
-
-    p = keep probability (e.g. p=0.8 drops 20% of units).
-    Mask is re-sampled each forward pass (different per batch).
-    """
+class Dropout(nn.Module):
     def __init__(self, keep_prob=0.8):
         super().__init__()
-        self.keep_prob = keep_prob
-        self._mask = None
+        # CONVENTION NOTE: nn.Dropout(p) drops with probability p.
+        # My NumPy version used keep_prob. Here: p = 1 - keep_prob.
+        self.dropout = nn.Dropout(p=1.0 - keep_prob)
 
     def forward(self, x):
+        return self.dropout(x)
+
+
+class SoftmaxCELayer(nn.Module):
+    def forward(self, x):
         if not self.training:
-            return x                   # no dropout at inference
-        self._mask = (np.random.rand(*x.shape) < self.keep_prob) / self.keep_prob
-        return x * self._mask
-
-    def backward(self, output_gradient):
-        return output_gradient * self._mask if self._mask is not None else output_gradient
+            return torch.softmax(x, dim=1)
+        return x
 
 
-class NeuralNetwork:
-    def __init__(self, optimizer=None):
-        self.layers = []
-        self.loss = None
-        self.loss_derivative = None
-        self.optimizer = optimizer or SGD(learning_rate=0.01)
-        self._opt_state = {}
+class NeuralNetwork(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.loss_fn = None
+        self.optimizer = None
 
     def add(self, layer):
         self.layers.append(layer)
 
-    def set_loss(self, loss, loss_derivative):
-        self.loss = loss
-        self.loss_derivative = loss_derivative
+    def set_loss(self, loss_fn):
+        self.loss_fn = loss_fn
 
-    def set_training(self, flag):
+    def set_optimizer(self, optimizer):
+        self.optimizer = optimizer
+
+    def forward(self, x):
         for layer in self.layers:
-            layer.training = flag
+            x = layer.forward(x)
+        return x
 
-    def predict(self, input):
-        self.set_training(False)
-        output = input
-        for layer in self.layers:
-            output = layer.forward(output)
-        return output
+    def predict(self, x):
+        self.eval()
+        with torch.no_grad():
+            if isinstance(x, np.ndarray):
+                x = torch.tensor(x, dtype=torch.float32)
+            return self.forward(x).numpy()
 
-    def train(self, X, y, epochs=1000, verbose=False):
+    def train_model(self, X, y, epochs=1000, verbose=False):
+        if isinstance(X, np.ndarray):
+            X = torch.tensor(X, dtype=torch.float32)
+        if isinstance(y, np.ndarray):
+            y = torch.tensor(y, dtype=torch.float32)
+
+        self.train()
+
         for epoch in range(epochs):
-            self.set_training(True)
+            # 1. Zero gradients — PyTorch accumulates gradients by default.
+            self.optimizer.zero_grad()
 
-            # Forward
-            output = X
+            # 2. Forward pass
+            output = self.forward(X)
+
+            # 3. Compute loss
+            loss = self.loss_fn(output, y)
+
+            # 4. Add L2 penalties from Dense layers
             for layer in self.layers:
-                output = layer.forward(output)
+                if isinstance(layer, Dense) and layer._l2_penalty is not None:
+                    loss = loss + layer._l2_penalty
 
-            error = self.loss(y, output)
+            # 5. Backward pass
+            loss.backward()
 
-            # Backward
-            gradient = self.loss_derivative(y, output)
-            for layer in reversed(self.layers):
-                gradient = layer.backward(gradient)
-
-            # Optimizer step over all learnable params
-            for layer in self.layers:
-                for pid, param, g in layer.get_params_and_grads():
-                    if g is None:
-                        continue
-                    state = self._opt_state.get(pid, {})
-                    new_param, new_state = self.optimizer.update(param, g, state)
-                    param[:] = new_param
-                    self._opt_state[pid] = new_state
+            # 6. Optimizer step - updates all parameters using computed gradients
+            self.optimizer.step()
 
             if verbose:
-                print(f"Epoch {epoch+1}/{epochs}: error: {error:.6f}")
+                print(f"Epoch: {epoch+1}/{epochs}: loss={loss.item()}")
 
 
 class NetworkBuilder:
     @staticmethod
     def build(config):
         """
-        Build a network from a simple configuration
-
         config = {
             'input_size': 2,
             'layers': [
-                {'type': 'dense', 'units': 64, 'activation': 'relu'},
-                {'type': 'dense', 'units': 32, 'activation': 'relu'},
-                {'type': 'dense', 'units': 1, 'activation': 'sigmoid'}
+                {'type': 'dense',   'units': 64, 'activation': 'relu', 'l2': 1e-4},
+                {'type': 'dropout', 'keep_prob': 0.8},
+                {'type': 'dense',   'units': 1,  'activation': 'sigmoid'},
             ],
-            'loss': 'mse'
-            'optimizer': {'type': 'SGD', 'learning_rate': 0.001},
+            'loss':      'bce',
+            'optimizer': {'type': 'adam', 'learning_rate': 0.001},
         }
+
+        Activation note:
+          'softmax_ce' → no Softmax layer; use CrossEntropyLoss which handles it.
+          'sigmoid'    → pair with BCELoss (or BCEWithLogitsLoss for logits).
+          'linear'     → no activation (regression output).
         """
+        # Activation functions — PyTorch functional equivalents
         activations = {
-            'relu': (Activations.relu, Activations.relu_derivative),
-            'sigmoid': (Activations.sigmoid, Activations.sigmoid_derivative),
-            'linear': (lambda x: x, lambda x: np.ones_like(x)),
+            'relu':    nn.ReLU(),
+            'sigmoid': nn.Sigmoid(),
+            'tanh':    nn.Tanh(),
+            'linear':  nn.Identity(),
         }
 
         losses = {
-            'mse': (Losses.mse, Losses.mse_derivative),
-            'bce': (Losses.bce, Losses.bce_derivative),
-            'categorical_ce': (Losses.categorical_ce, Losses.categorical_ce_derivative),
+            'mse':            nn.MSELoss(),
+            'bce':            nn.BCELoss(),
+            'bce_logits':     nn.BCEWithLogitsLoss(),
+            'categorical_ce': nn.CrossEntropyLoss(),
         }
 
-        opt_config = config.get('optimizer', {'type': 'sgd', 'learning_rate': 0.01})
-        opt_type = opt_config.get('type', 'sgd').lower()
-        lr = opt_config.get('learning_rate', 0.01)
+        opt_cfg  = config.get('optimizer', {'type': 'adam', 'learning_rate': 0.001})
+        opt_type = opt_cfg.get('type', 'adam').lower()
+        lr       = opt_cfg.get('learning_rate', 0.001)
 
+        network     = NeuralNetwork()
+        input_size  = config['input_size']
+
+        for lc in config['layers']:
+            ltype = lc['type']
+
+            if ltype == 'dense':
+                units = lc['units']
+                act   = lc.get('activation', 'linear')
+                l2    = lc.get('l2', 0.0)
+
+                network.add(Dense(input_size, units, l2=l2))
+
+                if act == 'softmax_ce':
+                    network.add(SoftmaxCELayer())
+                elif act != 'linear':
+                    network.add(activations[act])
+
+                input_size = units
+
+            elif ltype == 'dropout':
+                network.add(Dropout(keep_prob=lc.get('keep_prob', 0.8)))
+
+        loss_fn = losses[config.get('loss', 'mse')]
+        network.set_loss(loss_fn)
+
+        # Optimizer is built AFTER all layers are added so .parameters()
+        # captures all registered nn.Parameters.
+        # weight_decay here is PyTorch's built-in L2 — alternative to per-layer l2.
         if opt_type == 'sgd':
-            optimizer = SGD(lr)
+            optimizer = optim.SGD(network.parameters(), lr=lr,
+                                  momentum=opt_cfg.get('momentum', 0.0),
+                                  weight_decay=opt_cfg.get('weight_decay', 0.0))
         elif opt_type == 'momentum':
-            optimizer = Momentum(lr, beta=opt_config.get('beta', 0.9))
+            optimizer = optim.SGD(network.parameters(), lr=lr,
+                                  momentum=opt_cfg.get('beta', 0.9),
+                                  weight_decay=opt_cfg.get('weight_decay', 0.0))
         elif opt_type == 'adam':
-            optimizer = Adam(lr,
-                             beta1=opt_config.get('beta1', 0.9),
-                             beta2=opt_config.get('beta2', 0.999))
+            optimizer = optim.Adam(network.parameters(), lr=lr,
+                                   betas=(opt_cfg.get('beta1', 0.9),
+                                          opt_cfg.get('beta2', 0.999)),
+                                   weight_decay=opt_cfg.get('weight_decay', 0.0))
         else:
             raise ValueError(f"Unknown optimizer: {opt_type}")
 
-        nn = NeuralNetwork(optimizer=optimizer)
-        input_size = config['input_size']
-
-        for layer_config in config['layers']:
-            layer_type = layer_config['type']
-
-            if layer_type == 'dense':
-                units = layer_config['units']
-                act = layer_config.get('activation', 'linear')
-                l2 = layer_config.get('l2', 0.0)
-
-                if act == 'softmax_ce':
-                    nn.add(Dense(input_size, units, l2=l2))
-                    nn.add(SoftmaxCELayer())
-                else:
-                    nn.add(Dense(input_size, units, l2=l2))
-                    act_fn, act_deriv = activations[act]
-                    nn.add(Activation(act_fn, act_deriv))
-                input_size = units
-
-            elif layer_type == 'dropout':
-                nn.add(Dropout(keep_prob=layer_config.get('keep_prob', 0.8)))
-
-        loss_name = config.get('loss', 'mse')
-        loss_func, loss_deriv = losses[loss_name]
-        nn.set_loss(loss_func, loss_deriv)
-
-        return nn
+        network.set_optimizer(optimizer)
+        return network
 
 
 if __name__ == '__main__':
+    torch.manual_seed(42)
     np.random.seed(42)
 
-    X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
-    y = np.array([[0], [1], [1], [0]])
+    X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.float32)
+    y = np.array([[0], [1], [1], [0]], dtype=np.float32)
 
-    # Adam + BCE + Dropout
     config = {
         'input_size': 2,
         'layers': [
-            {'type': 'dense', 'units': 8, 'activation': 'relu', 'l2': 1e-4},
+            {'type': 'dense',   'units': 8,  'activation': 'relu', 'l2': 1e-4},
             {'type': 'dropout', 'keep_prob': 0.9},
-            {'type': 'dense', 'units': 1, 'activation': 'sigmoid'},
+            {'type': 'dense',   'units': 1,  'activation': 'sigmoid'},
         ],
-        'loss': 'bce',
+        'loss':      'bce',
         'optimizer': {'type': 'adam', 'learning_rate': 0.01},
     }
 
-    nn = NetworkBuilder.build(config)
-    nn.train(X, y, epochs=2000, verbose=False)
+    nn_model = NetworkBuilder.build(config)
+    nn_model.train_model(X, y, epochs=2000, verbose=False)
 
-    preds = nn.predict(X)
-    acc = np.mean((preds > 0.5).astype(int) == y)
+    preds = nn_model.predict(X)
+    acc   = np.mean((preds > 0.5).astype(int) == y)
     print(f"XOR accuracy: {acc:.2f}")
     print(preds.round(3))

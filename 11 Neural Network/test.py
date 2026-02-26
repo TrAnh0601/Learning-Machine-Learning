@@ -1,5 +1,5 @@
 import numpy as np
-from neural_network import Activations, Losses, Dense, Activation, NeuralNetwork, NetworkBuilder, SGD
+from nn_from_scratch import Activations, Losses, Dense, Activation, NeuralNetwork, NetworkBuilder, SGD
 
 results = []
 
@@ -174,7 +174,7 @@ np.random.seed(4)
 X_mem = np.random.randn(10, 2)
 y_mem = np.random.randint(0, 2, (10, 1)).astype(float)
 
-from neural_network import Adam
+from nn_from_scratch import Adam
 nn_mem = NeuralNetwork(optimizer=Adam(learning_rate=0.01))
 d1 = Dense(2, 32); d1.weights = he((2, 32))
 d2 = Dense(32, 1); d2.weights = he((32, 1))
