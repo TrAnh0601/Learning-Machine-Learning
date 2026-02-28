@@ -6,14 +6,6 @@ def add_bias(X):
     ones = np.ones((X.shape[0], 1))
     return np.concatenate((ones, X), axis=1)
 
-def mse(y, y_hat):
-    """Calculate Mean Squared Error"""
-    y = np.array(y)
-    y = y.reshape(-1)
-    y_hat = np.array(y_hat)
-    y_hat = y_hat.reshape(-1)
-    return np.mean((y - y_hat) ** 2)
-
 
 class LinearRegression:
     def __init__(self, regularization=None, lambda_1=0.0, lambda_2=0.0):
