@@ -3,7 +3,7 @@ import gymnasium as gym
 import numpy as np
 
 
-class TabularQAgent:
+class TabularAgent:
     def __init__(
             self,
             n_actions,
@@ -16,12 +16,8 @@ class TabularQAgent:
     ):
         if n_states is not None:
             self._q = np.zeros((n_states, n_actions))
-            self._get_q = lambda obs: self._q[obs]
-            self._set_q = lambda obs, a, v: self._q.__setitem__((obs, a), v)
         else:
-            _q = defaultdict(lambda: np.zeros(n_actions))
-            self._get_q = lambda obs: _q[obs]
-            self._set_q = lambda obs, a, v: _q[obs].__setitem__(a, v)
+            self._q = defaultdict(lambda: np.zeros(n_actions))
 
         self.n_actions = n_actions
         self.lr = learning_rate
@@ -30,6 +26,12 @@ class TabularQAgent:
         self.epsilon_end = epsilon_end
         self.epsilon_decay = epsilon_decay
         self.training_error = []
+
+    def _get_q(self, obs):
+        return self._q[obs]
+
+    def _set_q(self, obs, a, v):
+        self._q[obs][a] = v
 
     def get_action(self, obs, explore=True):
         if explore and np.random.random() < self.epsilon:
@@ -61,7 +63,7 @@ if __name__ == "__main__":
     fl_env = gym.make("FrozenLake-v1", is_slippery=True)
     fl_env = gym.wrappers.RecordEpisodeStatistics(fl_env)
 
-    bj_agent = TabularQAgent(
+    bj_agent = TabularAgent(
         n_actions=bj_env.action_space.n,
         learning_rate=0.1,
         discount=1.0,
@@ -70,7 +72,7 @@ if __name__ == "__main__":
         epsilon_decay=0.00002
     )
 
-    fl_agent = TabularQAgent(
+    fl_agent = TabularAgent(
         n_actions=fl_env.action_space.n,
         learning_rate=0.1,
         discount=0.99,
