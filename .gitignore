@@ -2,6 +2,7 @@ __pycache__/
 .ipymb_checkpoints/
 .idea/
 .data/
+.venv/
 .submission/
 *.pyc
 *.csv
