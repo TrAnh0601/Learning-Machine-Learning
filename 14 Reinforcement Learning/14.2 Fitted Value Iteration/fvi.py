@@ -46,11 +46,11 @@ def fitted_value_iteration(n_states=500, n_iter=50, k=5, gamma=0.99, ridge=1e-4)
     theta = np.zeros(50)
 
     best_theta = theta.copy()
-    best_return  = -np.inf
+    best_return = -np.inf
 
     for iter in range(n_iter):
         Phi = np.stack([phi(s) for s in states])
-        y   = np.zeros(n_states)
+        y = np.zeros(n_states)
 
         for i, s in enumerate(states):
             best_q = -np.inf
@@ -70,8 +70,9 @@ def fitted_value_iteration(n_states=500, n_iter=50, k=5, gamma=0.99, ridge=1e-4)
         delta = np.linalg.norm(theta_new - theta)
         theta = theta_new
 
-        current_return = run_policy(theta, n_episodes=20, verbose=False)
-        print(f"Iter {iter + 1:2d} | Delta = {delta:.5f} | Eval Return (3 eps) = {current_return:.1f}")
+        n_test = 20
+        current_return = run_policy(theta, n_episodes=n_test, verbose=False)
+        print(f"Iter {iter + 1:2d} | Delta = {delta:.5f} | Eval Return ({n_test} eps) = {current_return:.1f}")
 
         if current_return > best_return:
             best_return = current_return
@@ -100,8 +101,7 @@ def run_policy(theta, gamma=0.99, n_episodes=100, verbose=False):
         plan_env.reset()
         plan_env.unwrapped.state = s.copy()
         s_next, r, term, trunc, _ = plan_env.step(a)
-        done = term or trunc
-        return r if done else r + gamma * (theta @ phi(s_next))
+        return r + (not term) * gamma * (theta @ phi(s_next))
 
     for _ in range(n_episodes):
         s, _ = eval_env.reset()
